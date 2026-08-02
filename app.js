@@ -1,6 +1,7 @@
 /* ============================================
    Olympics Knowledge Base — Application Logic
    Cloud-synced via Firebase Firestore
+   Secured via Firebase Authentication
    ============================================ */
 
 // ─── Summer Olympics Master Dataset ───
@@ -43,13 +44,12 @@ const OLYMPICS_DATA = [
 
 // ─── State ───
 let isEditorMode = false;
+let currentUser = null;
 let quillEditor = null;
 let autoSaveTimeout = null;
 let notesData = {};
 let firestoreAvailable = false;
-const EDITOR_PASSWORD = "iitquiz2025"; // Default password — user can change
 const STORAGE_KEY = "olympics-kb-notes";
-const PASSWORD_KEY = "olympics-kb-password";
 const FIRESTORE_COLLECTION = "olympics-notes";
 
 // ─── Initialize ───
@@ -69,12 +69,55 @@ document.addEventListener("DOMContentLoaded", async () => {
   } else if (page === "detail") {
     initDetailPage();
   }
+
+  // Listen for Firebase Auth state changes
+  initAuthListener();
 });
 
 function detectPage() {
   const path = window.location.pathname;
   if (path.includes("olympics.html")) return "detail";
   return "home";
+}
+
+// ─── Auth Listener ───
+function initAuthListener() {
+  if (typeof auth === "undefined" || auth === null) return;
+
+  auth.onAuthStateChanged((user) => {
+    currentUser = user;
+
+    // ── Home page UI update ──
+    const editorModeBtn = document.getElementById("editor-mode-btn");
+    if (editorModeBtn) {
+      if (user) {
+        editorModeBtn.textContent = "🔓 Signed In";
+        editorModeBtn.classList.add("btn-gold");
+        editorModeBtn.classList.remove("btn-ghost");
+        document.querySelector(".admin-bar")?.classList.add("active");
+      } else {
+        editorModeBtn.textContent = "✏️ Editor Mode";
+        editorModeBtn.classList.remove("btn-gold");
+        editorModeBtn.classList.add("btn-ghost");
+        document.querySelector(".admin-bar")?.classList.remove("active");
+        isEditorMode = false;
+      }
+    }
+
+    // ── Detail page UI update (on sign-out while editing) ──
+    const editorToggleBtn = document.getElementById("editor-toggle-btn");
+    if (editorToggleBtn && !user && isEditorMode) {
+      isEditorMode = false;
+      editorToggleBtn.textContent = "✏️ Edit";
+      editorToggleBtn.classList.remove("btn-primary");
+      editorToggleBtn.classList.add("btn-ghost");
+      hideEditor();
+      const params = new URLSearchParams(window.location.search);
+      const olympicsId = params.get("id");
+      const olympics = getOlympicsById(olympicsId);
+      if (olympics) renderContent(olympics);
+    }
+  });
 }
 
 // ─── Loading State ───
@@ -169,15 +212,6 @@ async function setNotes(olympicsId, htmlContent) {
 
 function getOlympicsById(id) {
   return OLYMPICS_DATA.find((o) => o.id === id) || null;
-}
-
-// ─── Password Management ───
-function getPassword() {
-  return localStorage.getItem(PASSWORD_KEY) || EDITOR_PASSWORD;
-}
-
-function setPassword(newPassword) {
-  localStorage.setItem(PASSWORD_KEY, newPassword);
 }
 
 // ─────────────────────────────────
@@ -331,68 +365,72 @@ function initEditorModeToggle() {
   const toggleBtn = document.getElementById("editor-mode-btn");
   if (!toggleBtn) return;
 
-  // Check if already in editor mode from session
-  isEditorMode = sessionStorage.getItem("olympics-kb-editor") === "true";
-  if (isEditorMode) {
-    toggleBtn.textContent = "🔓 Editor Mode";
-    toggleBtn.classList.add("btn-gold");
-    toggleBtn.classList.remove("btn-ghost");
-    document.querySelector(".admin-bar")?.classList.add("active");
-  }
-
   toggleBtn.addEventListener("click", () => {
-    if (isEditorMode) {
-      // Exit editor mode
-      isEditorMode = false;
-      sessionStorage.removeItem("olympics-kb-editor");
-      toggleBtn.textContent = "✏️ Editor Mode";
-      toggleBtn.classList.remove("btn-gold");
-      toggleBtn.classList.add("btn-ghost");
-      document.querySelector(".admin-bar")?.classList.remove("active");
-      showToast("Editor mode disabled", "info");
+    if (currentUser) {
+      // Already signed in — sign out
+      auth.signOut();
+      showToast("Signed out", "info");
+    } else if (typeof auth !== "undefined" && auth !== null) {
+      // Not signed in — show login modal
+      showLoginModal();
     } else {
-      // Show password modal
-      showPasswordModal();
+      // Firebase not configured
+      showToast("Firebase not configured — editing disabled", "error");
     }
   });
 }
 
-function showPasswordModal() {
-  const overlay = document.getElementById("password-modal");
+// ─── Login Modal (Firebase Auth) ───
+function showLoginModal(onSuccess) {
+  const overlay = document.getElementById("login-modal");
   if (!overlay) return;
   overlay.classList.add("active");
 
-  const input = overlay.querySelector("input");
+  const emailInput = overlay.querySelector('input[type="email"]');
+  const passwordInput = overlay.querySelector('input[type="password"]');
   const errorEl = overlay.querySelector(".modal-error");
-  input.value = "";
+  emailInput.value = "";
+  passwordInput.value = "";
   errorEl.style.display = "none";
-  
-  setTimeout(() => input.focus(), 100);
 
-  // Handle submit
+  setTimeout(() => emailInput.focus(), 100);
+
   const submitBtn = overlay.querySelector(".modal-submit");
   const cancelBtn = overlay.querySelector(".modal-cancel");
 
-  const handleSubmit = () => {
-    const pwd = input.value;
-    if (pwd === getPassword()) {
-      isEditorMode = true;
-      sessionStorage.setItem("olympics-kb-editor", "true");
-      overlay.classList.remove("active");
+  const handleSubmit = async () => {
+    const email = emailInput.value.trim();
+    const password = passwordInput.value;
 
-      const toggleBtn = document.getElementById("editor-mode-btn");
-      if (toggleBtn) {
-        toggleBtn.textContent = "🔓 Editor Mode";
-        toggleBtn.classList.add("btn-gold");
-        toggleBtn.classList.remove("btn-ghost");
-      }
-      document.querySelector(".admin-bar")?.classList.add("active");
-      showToast("Editor mode enabled ✏️", "success");
-    } else {
-      errorEl.textContent = "Incorrect password";
+    if (!email || !password) {
+      errorEl.textContent = "Please enter email and password";
       errorEl.style.display = "block";
-      input.value = "";
-      input.focus();
+      return;
+    }
+
+    // Disable button while signing in
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Signing in...";
+
+    try {
+      await auth.signInWithEmailAndPassword(email, password);
+      overlay.classList.remove("active");
+      showToast("Signed in — you can now edit ✏️", "success");
+      if (onSuccess) onSuccess();
+    } catch (e) {
+      let message = "Sign in failed";
+      if (e.code === "auth/user-not-found") message = "No account with this email";
+      else if (e.code === "auth/wrong-password") message = "Incorrect password";
+      else if (e.code === "auth/invalid-email") message = "Invalid email address";
+      else if (e.code === "auth/invalid-credential") message = "Invalid email or password";
+      else if (e.code === "auth/too-many-requests") message = "Too many attempts — try again later";
+      errorEl.textContent = message;
+      errorEl.style.display = "block";
+      passwordInput.value = "";
+      passwordInput.focus();
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Sign In";
     }
   };
 
@@ -407,7 +445,12 @@ function showPasswordModal() {
     overlay.classList.remove("active");
   });
 
-  input.addEventListener("keydown", (e) => {
+  emailInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") passwordInput.focus();
+    if (e.key === "Escape") overlay.classList.remove("active");
+  });
+
+  passwordInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") handleSubmit();
     if (e.key === "Escape") overlay.classList.remove("active");
   });
@@ -415,14 +458,17 @@ function showPasswordModal() {
 
 // ─── Admin Bar ───
 function initAdminBar() {
-  const changePasswordBtn = document.getElementById("change-password-btn");
   const backupBtn = document.getElementById("backup-btn");
+  const signOutBtn = document.getElementById("sign-out-btn");
 
-  if (changePasswordBtn) {
-    changePasswordBtn.addEventListener("click", showChangePasswordModal);
-  }
   if (backupBtn) {
     backupBtn.addEventListener("click", downloadBackup);
+  }
+  if (signOutBtn) {
+    signOutBtn.addEventListener("click", () => {
+      if (auth) auth.signOut();
+      showToast("Signed out", "info");
+    });
   }
 }
 
@@ -436,48 +482,6 @@ function downloadBackup() {
   a.click();
   URL.revokeObjectURL(url);
   showToast("Backup downloaded 📥", "success");
-}
-
-function showChangePasswordModal() {
-  const overlay = document.getElementById("change-password-modal");
-  if (!overlay) return;
-  overlay.classList.add("active");
-
-  const currentInput = overlay.querySelector("#current-password");
-  const newInput = overlay.querySelector("#new-password");
-  const errorEl = overlay.querySelector(".modal-error");
-  currentInput.value = "";
-  newInput.value = "";
-  errorEl.style.display = "none";
-
-  setTimeout(() => currentInput.focus(), 100);
-
-  const submitBtn = overlay.querySelector(".modal-submit");
-  const cancelBtn = overlay.querySelector(".modal-cancel");
-
-  const handleSubmit = () => {
-    if (currentInput.value !== getPassword()) {
-      errorEl.textContent = "Current password is incorrect";
-      errorEl.style.display = "block";
-      return;
-    }
-    if (newInput.value.length < 4) {
-      errorEl.textContent = "New password must be at least 4 characters";
-      errorEl.style.display = "block";
-      return;
-    }
-    setPassword(newInput.value);
-    overlay.classList.remove("active");
-    showToast("Password changed successfully 🔐", "success");
-  };
-
-  const newSubmit = submitBtn.cloneNode(true);
-  submitBtn.parentNode.replaceChild(newSubmit, submitBtn);
-  newSubmit.addEventListener("click", handleSubmit);
-
-  const newCancel = cancelBtn.cloneNode(true);
-  cancelBtn.parentNode.replaceChild(newCancel, cancelBtn);
-  newCancel.addEventListener("click", () => overlay.classList.remove("active"));
 }
 
 // ─────────────────────────────────
@@ -582,18 +586,9 @@ function initDetailEditorToggle(olympics) {
   const toggleBtn = document.getElementById("editor-toggle-btn");
   if (!toggleBtn) return;
 
-  isEditorMode = sessionStorage.getItem("olympics-kb-editor") === "true";
-
-  if (isEditorMode) {
-    toggleBtn.textContent = "📖 Read Mode";
-    toggleBtn.classList.add("btn-primary");
-    toggleBtn.classList.remove("btn-ghost");
-    showEditor(olympics);
-  }
-
   toggleBtn.addEventListener("click", () => {
     if (isEditorMode) {
-      // Switch to reader mode — save first, then refresh content
+      // Currently editing → switch to reader mode (save first)
       if (quillEditor) {
         const html = quillEditor.root.innerHTML;
         setNotes(olympics.id, html);
@@ -604,57 +599,25 @@ function initDetailEditorToggle(olympics) {
       toggleBtn.classList.add("btn-ghost");
       hideEditor();
       renderContent(olympics);
-    } else {
-      // Check password
-      showDetailPasswordModal(olympics, toggleBtn);
-    }
-  });
-}
-
-function showDetailPasswordModal(olympics, toggleBtn) {
-  const overlay = document.getElementById("password-modal");
-  if (!overlay) return;
-  overlay.classList.add("active");
-
-  const input = overlay.querySelector("input");
-  const errorEl = overlay.querySelector(".modal-error");
-  input.value = "";
-  errorEl.style.display = "none";
-
-  setTimeout(() => input.focus(), 100);
-
-  const submitBtn = overlay.querySelector(".modal-submit");
-  const cancelBtn = overlay.querySelector(".modal-cancel");
-
-  const handleSubmit = () => {
-    if (input.value === getPassword()) {
+    } else if (currentUser) {
+      // Signed in → show editor immediately
       isEditorMode = true;
-      sessionStorage.setItem("olympics-kb-editor", "true");
-      overlay.classList.remove("active");
       toggleBtn.textContent = "📖 Read Mode";
       toggleBtn.classList.add("btn-primary");
       toggleBtn.classList.remove("btn-ghost");
       showEditor(olympics);
-      showToast("Editor mode enabled ✏️", "success");
+    } else if (typeof auth !== "undefined" && auth !== null) {
+      // Not signed in → show login modal, then show editor on success
+      showLoginModal(() => {
+        isEditorMode = true;
+        toggleBtn.textContent = "📖 Read Mode";
+        toggleBtn.classList.add("btn-primary");
+        toggleBtn.classList.remove("btn-ghost");
+        showEditor(olympics);
+      });
     } else {
-      errorEl.textContent = "Incorrect password";
-      errorEl.style.display = "block";
-      input.value = "";
-      input.focus();
+      showToast("Firebase not configured — editing disabled", "error");
     }
-  };
-
-  const newSubmit = submitBtn.cloneNode(true);
-  submitBtn.parentNode.replaceChild(newSubmit, submitBtn);
-  newSubmit.addEventListener("click", handleSubmit);
-
-  const newCancel = cancelBtn.cloneNode(true);
-  cancelBtn.parentNode.replaceChild(newCancel, cancelBtn);
-  newCancel.addEventListener("click", () => overlay.classList.remove("active"));
-
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") handleSubmit();
-    if (e.key === "Escape") overlay.classList.remove("active");
   });
 }
 
@@ -738,7 +701,6 @@ function initNavigation(currentOlympics) {
       prevBtn.title = `${prev.year} ${prev.city}`;
       prevBtn.addEventListener("click", async () => {
         if (quillEditor) {
-          // Save before navigating
           const html = quillEditor.root.innerHTML;
           await setNotes(currentOlympics.id, html);
         }

@@ -26,12 +26,12 @@
     </div>
   </nav>
 
-  <!-- Admin Bar (visible only in editor mode) -->
+  <!-- Admin Bar (visible only when signed in) -->
   <div class="admin-bar" id="admin-bar">
-    <span class="admin-bar-label">🔓 Editor Mode Active — edits save to cloud automatically</span>
+    <span class="admin-bar-label">🔓 Signed in — edits save to cloud automatically</span>
     <div class="admin-bar-actions">
       <button class="btn btn-ghost" id="backup-btn">📥 Download Backup</button>
-      <button class="btn btn-ghost" id="change-password-btn">🔑 Change Password</button>
+      <button class="btn btn-danger" id="sign-out-btn">🚪 Sign Out</button>
     </div>
   </div>
 
@@ -72,31 +72,17 @@
     <p>🏅 Olympics Knowledge Base · Built for Inter IIT Sports Quiz Prep</p>
   </footer>
 
-  <!-- Password Modal -->
-  <div class="modal-overlay" id="password-modal">
+  <!-- Login Modal (Firebase Auth) -->
+  <div class="modal-overlay" id="login-modal">
     <div class="modal">
-      <h2>🔐 Enter Editor Password</h2>
-      <p>Enter the password to enable editor mode and write notes.</p>
+      <h2>🔐 Sign In to Edit</h2>
+      <p>Sign in with your editor account to write and edit notes.</p>
       <div class="modal-error"></div>
-      <input type="password" placeholder="Password" autofocus>
+      <input type="email" placeholder="Email" autofocus>
+      <input type="password" placeholder="Password">
       <div class="modal-actions">
         <button class="btn btn-ghost modal-cancel">Cancel</button>
-        <button class="btn btn-primary modal-submit">Unlock</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Change Password Modal -->
-  <div class="modal-overlay" id="change-password-modal">
-    <div class="modal">
-      <h2>🔑 Change Password</h2>
-      <p>Set a new password for editor mode.</p>
-      <div class="modal-error"></div>
-      <input type="password" id="current-password" placeholder="Current password">
-      <input type="password" id="new-password" placeholder="New password">
-      <div class="modal-actions">
-        <button class="btn btn-ghost modal-cancel">Cancel</button>
-        <button class="btn btn-primary modal-submit">Change</button>
+        <button class="btn btn-primary modal-submit">Sign In</button>
       </div>
     </div>
   </div>
@@ -104,6 +90,7 @@
   <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
   <script src="firebase-config.js"></script>
   <script src="app.js"></script>
 </body>
