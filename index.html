@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Olympics Knowledge Base — Facts, trivia, and notes for every Summer Olympic Games. Prepared for Inter IIT Sports Quiz.">
+  <title>Olympics Knowledge Base — Inter IIT Sports Quiz</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏅</text></svg>">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Background decoration -->
+  <div class="bg-rings"></div>
+
+  <!-- Navbar -->
+  <nav class="navbar">
+    <div class="navbar-inner">
+      <a href="index.html" class="navbar-brand">
+        <span class="logo-icon">🏅</span>
+        <span class="brand-text">Olympics KB</span>
+        <span class="brand-sub">Inter IIT Sports Quiz</span>
+      </a>
+      <div class="navbar-actions">
+        <button class="btn btn-ghost" id="editor-mode-btn">✏️ Editor Mode</button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Admin Bar (visible only in editor mode) -->
+  <div class="admin-bar" id="admin-bar">
+    <span class="admin-bar-label">🔓 Editor Mode Active</span>
+    <div class="admin-bar-actions">
+      <button class="btn btn-ghost" id="export-btn">📤 Export Notes</button>
+      <button class="btn btn-ghost" id="import-btn">📥 Import Notes</button>
+      <button class="btn btn-ghost" id="change-password-btn">🔑 Change Password</button>
+      <input type="file" id="import-file" accept=".json" style="display:none">
+    </div>
+  </div>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="olympic-rings">
+      <div class="ring"></div>
+      <div class="ring"></div>
+      <div class="ring"></div>
+      <div class="ring"></div>
+      <div class="ring"></div>
+    </div>
+    <h1>The <span class="highlight">Olympic Games</span><br>Knowledge Base</h1>
+    <p>Your personal encyclopedia of facts, trivia, and insights from every Summer Olympics — Athens 1896 to Los Angeles 2028.</p>
+  </section>
+
+  <!-- Search & Filters -->
+  <div class="controls">
+    <div class="search-box">
+      <span class="search-icon">🔍</span>
+      <input type="text" id="search-input" placeholder="Search by year, city, or country...">
+    </div>
+    <div class="filter-tabs">
+      <button class="filter-tab active" data-filter="all">All</button>
+      <button class="filter-tab" data-filter="with-notes">📝 With Notes</button>
+      <button class="filter-tab" data-filter="no-notes">📄 No Notes</button>
+    </div>
+    <span class="stats-bar" id="stats-bar"></span>
+  </div>
+
+  <!-- Olympics Grid -->
+  <div class="olympics-grid" id="olympics-grid">
+    <!-- Cards rendered by JS -->
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <p>🏅 Olympics Knowledge Base · Built for Inter IIT Sports Quiz Prep</p>
+  </footer>
+
+  <!-- Password Modal -->
+  <div class="modal-overlay" id="password-modal">
+    <div class="modal">
+      <h2>🔐 Enter Editor Password</h2>
+      <p>Enter the password to enable editor mode and write notes.</p>
+      <div class="modal-error"></div>
+      <input type="password" placeholder="Password" autofocus>
+      <div class="modal-actions">
+        <button class="btn btn-ghost modal-cancel">Cancel</button>
+        <button class="btn btn-primary modal-submit">Unlock</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Change Password Modal -->
+  <div class="modal-overlay" id="change-password-modal">
+    <div class="modal">
+      <h2>🔑 Change Password</h2>
+      <p>Set a new password for editor mode.</p>
+      <div class="modal-error"></div>
+      <input type="password" id="current-password" placeholder="Current password">
+      <input type="password" id="new-password" placeholder="New password">
+      <div class="modal-actions">
+        <button class="btn btn-ghost modal-cancel">Cancel</button>
+        <button class="btn btn-primary modal-submit">Change</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

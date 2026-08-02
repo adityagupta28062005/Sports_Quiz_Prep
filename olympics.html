@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Olympics facts and trivia — detailed notes for Inter IIT Sports Quiz preparation.">
+  <title>Olympics KB</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏅</text></svg>">
+  <!-- Quill.js Editor -->
+  <link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Background decoration -->
+  <div class="bg-rings"></div>
+
+  <!-- Navbar -->
+  <nav class="navbar">
+    <div class="navbar-inner">
+      <a href="index.html" class="navbar-brand">
+        <span class="logo-icon">🏅</span>
+        <span class="brand-text">Olympics KB</span>
+        <span class="brand-sub">Inter IIT Sports Quiz</span>
+      </a>
+      <div class="navbar-actions">
+        <button class="btn btn-ghost" id="editor-toggle-btn">✏️ Edit</button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Detail Page -->
+  <div class="detail-page">
+    <div class="detail-header">
+      <!-- Breadcrumb -->
+      <div class="detail-breadcrumb">
+        <a href="index.html">🏠 Home</a>
+        <span>›</span>
+        <span id="breadcrumb-current">Olympics</span>
+      </div>
+
+      <!-- Title Row -->
+      <div class="detail-title-row">
+        <div>
+          <h1 class="detail-title" id="detail-title"></h1>
+          <p class="detail-subtitle" id="detail-subtitle"></p>
+        </div>
+        <div class="detail-nav-buttons">
+          <button class="btn-icon" id="nav-prev" title="Previous Olympics">◀</button>
+          <button class="btn-icon" id="nav-next" title="Next Olympics">▶</button>
+        </div>
+      </div>
+
+      <!-- Quick Facts -->
+      <div class="quick-facts" id="quick-facts"></div>
+    </div>
+
+    <!-- Content Area -->
+    <div class="content-area">
+      <!-- Reader View (default) -->
+      <div class="reader-view empty-state" id="reader-view">
+        <div class="empty-icon">📝</div>
+        <h3>No notes yet</h3>
+        <p>Enter Editor Mode to start writing facts and trivia about this Olympics!</p>
+      </div>
+
+      <!-- Editor View (toggled) -->
+      <div class="editor-wrapper" id="editor-wrapper">
+        <div class="editor-toolbar-row">
+          <div class="editor-status" id="save-status">
+            <span class="status-dot"></span> All changes saved
+          </div>
+          <div class="editor-actions">
+            <button class="btn btn-ghost btn-sm" onclick="exportNotesForDeploy()">📤 Export for Deploy</button>
+          </div>
+        </div>
+        <div id="quill-editor"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <p>🏅 Olympics Knowledge Base · Built for Inter IIT Sports Quiz Prep</p>
+  </footer>
+
+  <!-- Password Modal -->
+  <div class="modal-overlay" id="password-modal">
+    <div class="modal">
+      <h2>🔐 Enter Editor Password</h2>
+      <p>Enter the password to edit notes for this Olympics.</p>
+      <div class="modal-error"></div>
+      <input type="password" placeholder="Password" autofocus>
+      <div class="modal-actions">
+        <button class="btn btn-ghost modal-cancel">Cancel</button>
+        <button class="btn btn-primary modal-submit">Unlock</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quill.js -->
+  <script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
