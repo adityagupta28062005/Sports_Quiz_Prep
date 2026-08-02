@@ -28,12 +28,10 @@
 
   <!-- Admin Bar (visible only in editor mode) -->
   <div class="admin-bar" id="admin-bar">
-    <span class="admin-bar-label">🔓 Editor Mode Active</span>
+    <span class="admin-bar-label">🔓 Editor Mode Active — edits save to cloud automatically</span>
     <div class="admin-bar-actions">
-      <button class="btn btn-ghost" id="export-btn">📤 Export Notes</button>
-      <button class="btn btn-ghost" id="import-btn">📥 Import Notes</button>
+      <button class="btn btn-ghost" id="backup-btn">📥 Download Backup</button>
       <button class="btn btn-ghost" id="change-password-btn">🔑 Change Password</button>
-      <input type="file" id="import-file" accept=".json" style="display:none">
     </div>
   </div>
 
@@ -103,6 +101,10 @@
     </div>
   </div>
 
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <script src="firebase-config.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

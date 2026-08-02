@@ -1,5 +1,6 @@
 /* ============================================
    Olympics Knowledge Base — Application Logic
+   Cloud-synced via Firebase Firestore
    ============================================ */
 
 // ─── Summer Olympics Master Dataset ───
@@ -45,14 +46,23 @@ let isEditorMode = false;
 let quillEditor = null;
 let autoSaveTimeout = null;
 let notesData = {};
+let firestoreAvailable = false;
 const EDITOR_PASSWORD = "iitquiz2025"; // Default password — user can change
 const STORAGE_KEY = "olympics-kb-notes";
 const PASSWORD_KEY = "olympics-kb-password";
+const FIRESTORE_COLLECTION = "olympics-notes";
 
 // ─── Initialize ───
-document.addEventListener("DOMContentLoaded", () => {
-  loadNotesFromStorage();
-  
+document.addEventListener("DOMContentLoaded", async () => {
+  // Show loading state
+  showLoadingState();
+
+  // Load notes (Firestore → localStorage fallback)
+  await loadAllNotes();
+
+  // Hide loading, render page
+  hideLoadingState();
+
   const page = detectPage();
   if (page === "home") {
     initHomePage();
@@ -67,25 +77,64 @@ function detectPage() {
   return "home";
 }
 
-// ─── Notes Storage ───
-function loadNotesFromStorage() {
+// ─── Loading State ───
+function showLoadingState() {
+  const grid = document.getElementById("olympics-grid");
+  const readerView = document.getElementById("reader-view");
+
+  if (grid) {
+    grid.innerHTML = `
+      <div class="no-results">
+        <div class="loading-spinner"></div>
+        <h3>Loading notes...</h3>
+      </div>`;
+  }
+  if (readerView) {
+    readerView.innerHTML = `
+      <div class="loading-spinner"></div>
+      <h3 style="color: var(--text-secondary); margin-top: 1rem;">Loading...</h3>
+    `;
+    readerView.classList.add("empty-state");
+  }
+}
+
+function hideLoadingState() {
+  // Loading state is replaced by the actual render calls
+}
+
+// ─── Notes Storage (Firestore + localStorage) ───
+async function loadAllNotes() {
+  // 1. Load from localStorage first (instant cache)
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
       notesData = JSON.parse(stored);
     }
   } catch (e) {
-    console.error("Failed to load notes:", e);
     notesData = {};
   }
-}
 
-function saveNotesToStorage() {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(notesData));
-  } catch (e) {
-    console.error("Failed to save notes:", e);
-    showToast("Failed to save — storage might be full", "error");
+  // 2. Try loading from Firestore (cloud — overrides localStorage)
+  if (typeof db !== "undefined" && db !== null) {
+    try {
+      const snapshot = await db.collection(FIRESTORE_COLLECTION).get();
+      if (!snapshot.empty) {
+        const cloudData = {};
+        snapshot.forEach((doc) => {
+          cloudData[doc.id] = doc.data();
+        });
+        // Cloud takes precedence
+        notesData = { ...notesData, ...cloudData };
+        // Update local cache
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(notesData));
+        } catch (e) {}
+      }
+      firestoreAvailable = true;
+      console.log("☁️ Notes loaded from Firestore");
+    } catch (e) {
+      console.warn("⚠️ Firestore read failed, using localStorage:", e.message);
+    }
   }
 }
 
@@ -93,12 +142,29 @@ function getNotes(olympicsId) {
   return notesData[olympicsId] || null;
 }
 
-function setNotes(olympicsId, htmlContent) {
-  notesData[olympicsId] = {
+async function setNotes(olympicsId, htmlContent) {
+  const noteData = {
     content: htmlContent,
     lastUpdated: new Date().toISOString(),
   };
-  saveNotesToStorage();
+
+  // Update memory
+  notesData[olympicsId] = noteData;
+
+  // Save to localStorage (cache)
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(notesData));
+  } catch (e) {}
+
+  // Save to Firestore (primary — so everyone sees it)
+  if (firestoreAvailable) {
+    try {
+      await db.collection(FIRESTORE_COLLECTION).doc(olympicsId).set(noteData);
+    } catch (e) {
+      console.error("Firestore write failed:", e);
+      showToast("Cloud save failed — saved locally only", "error");
+    }
+  }
 }
 
 function getOlympicsById(id) {
@@ -122,7 +188,7 @@ function initHomePage() {
   initSearch();
   initFilterTabs();
   initEditorModeToggle();
-  initExportImport();
+  initAdminBar();
   updateStatsBar(OLYMPICS_DATA);
 }
 
@@ -200,7 +266,8 @@ function updateStatsBar(data) {
     const n = getNotes(o.id);
     return n && n.content && n.content.trim() !== "" && n.content !== "<p><br></p>";
   });
-  bar.textContent = `${active.length} editions · ${withNotes.length} with notes`;
+  const cloudLabel = firestoreAvailable ? " · ☁️ Cloud synced" : " · 💾 Local only";
+  bar.textContent = `${active.length} editions · ${withNotes.length} with notes${cloudLabel}`;
 }
 
 // ─── Search ───
@@ -346,73 +413,29 @@ function showPasswordModal() {
   });
 }
 
-// ─── Export / Import ───
-function initExportImport() {
-  const exportBtn = document.getElementById("export-btn");
-  const importBtn = document.getElementById("import-btn");
-  const importFile = document.getElementById("import-file");
+// ─── Admin Bar ───
+function initAdminBar() {
   const changePasswordBtn = document.getElementById("change-password-btn");
+  const backupBtn = document.getElementById("backup-btn");
 
-  if (exportBtn) {
-    exportBtn.addEventListener("click", exportNotes);
-  }
-  if (importBtn) {
-    importBtn.addEventListener("click", () => importFile?.click());
-  }
-  if (importFile) {
-    importFile.addEventListener("change", importNotes);
-  }
   if (changePasswordBtn) {
     changePasswordBtn.addEventListener("click", showChangePasswordModal);
   }
+  if (backupBtn) {
+    backupBtn.addEventListener("click", downloadBackup);
+  }
 }
 
-function exportNotes() {
+function downloadBackup() {
   const dataStr = JSON.stringify(notesData, null, 2);
   const blob = new Blob([dataStr], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `olympics-notes-${new Date().toISOString().slice(0, 10)}.json`;
+  a.download = `olympics-notes-backup-${new Date().toISOString().slice(0, 10)}.json`;
   a.click();
   URL.revokeObjectURL(url);
-  showToast("Notes exported successfully 📤", "success");
-}
-
-function importNotes(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-
-  const reader = new FileReader();
-  reader.onload = (ev) => {
-    try {
-      const imported = JSON.parse(ev.target.result);
-      // Merge with existing
-      Object.keys(imported).forEach((key) => {
-        notesData[key] = imported[key];
-      });
-      saveNotesToStorage();
-      showToast(`Imported notes for ${Object.keys(imported).length} editions 📥`, "success");
-      applyFilters(); // Refresh grid
-    } catch (err) {
-      showToast("Invalid JSON file", "error");
-    }
-  };
-  reader.readAsText(file);
-  e.target.value = "";
-}
-
-function exportNotesForDeploy() {
-  // Export as a JS data file for committing to the repo
-  const dataStr = `// Auto-generated — do not edit manually\nconst PUBLISHED_NOTES = ${JSON.stringify(notesData, null, 2)};\n`;
-  const blob = new Blob([dataStr], { type: "application/javascript" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "olympics-notes.js";
-  a.click();
-  URL.revokeObjectURL(url);
-  showToast("Exported JS data file for deployment 🚀", "success");
+  showToast("Backup downloaded 📥", "success");
 }
 
 function showChangePasswordModal() {
@@ -570,7 +593,11 @@ function initDetailEditorToggle(olympics) {
 
   toggleBtn.addEventListener("click", () => {
     if (isEditorMode) {
-      // Switch to reader mode
+      // Switch to reader mode — save first, then refresh content
+      if (quillEditor) {
+        const html = quillEditor.root.innerHTML;
+        setNotes(olympics.id, html);
+      }
       isEditorMode = false;
       toggleBtn.textContent = "✏️ Edit";
       toggleBtn.classList.remove("btn-primary");
@@ -656,13 +683,13 @@ function showEditor(olympics) {
       },
     });
 
-    // Auto-save
+    // Auto-save on edit (debounced) — saves to Firestore + localStorage
     quillEditor.on("text-change", () => {
       clearTimeout(autoSaveTimeout);
       updateSaveStatus("saving");
-      autoSaveTimeout = setTimeout(() => {
+      autoSaveTimeout = setTimeout(async () => {
         const html = quillEditor.root.innerHTML;
-        setNotes(olympics.id, html);
+        await setNotes(olympics.id, html);
         updateSaveStatus("saved");
       }, 800);
     });
@@ -692,7 +719,8 @@ function updateSaveStatus(status) {
   if (status === "saving") {
     statusEl.innerHTML = '<span class="status-dot" style="background: var(--ring-yellow);"></span> Saving...';
   } else if (status === "saved") {
-    statusEl.innerHTML = '<span class="status-dot" style="background: var(--ring-green);"></span> All changes saved';
+    const cloudIcon = firestoreAvailable ? "☁️" : "💾";
+    statusEl.innerHTML = `<span class="status-dot" style="background: var(--ring-green);"></span> ${cloudIcon} All changes saved`;
   }
 }
 
@@ -708,11 +736,11 @@ function initNavigation(currentOlympics) {
     if (currentIndex > 0) {
       const prev = activeOlympics[currentIndex - 1];
       prevBtn.title = `${prev.year} ${prev.city}`;
-      prevBtn.addEventListener("click", () => {
+      prevBtn.addEventListener("click", async () => {
         if (quillEditor) {
           // Save before navigating
           const html = quillEditor.root.innerHTML;
-          setNotes(currentOlympics.id, html);
+          await setNotes(currentOlympics.id, html);
         }
         window.location.href = `olympics.html?id=${prev.id}`;
       });
@@ -726,10 +754,10 @@ function initNavigation(currentOlympics) {
     if (currentIndex < activeOlympics.length - 1) {
       const next = activeOlympics[currentIndex + 1];
       nextBtn.title = `${next.year} ${next.city}`;
-      nextBtn.addEventListener("click", () => {
+      nextBtn.addEventListener("click", async () => {
         if (quillEditor) {
           const html = quillEditor.root.innerHTML;
-          setNotes(currentOlympics.id, html);
+          await setNotes(currentOlympics.id, html);
         }
         window.location.href = `olympics.html?id=${next.id}`;
       });
@@ -775,25 +803,3 @@ function showToast(message, type = "info") {
     setTimeout(() => toast.remove(), 400);
   }, 3000);
 }
-
-// ─── Data File Loading (for deployed site) ───
-// On page load, try to fetch the committed notes JSON
-async function loadPublishedNotes() {
-  try {
-    const response = await fetch("data/olympics-notes.json");
-    if (response.ok) {
-      const published = await response.json();
-      if (Object.keys(published).length > 0) {
-        // Merge: localStorage overrides published data
-        const merged = { ...published, ...notesData };
-        notesData = merged;
-        saveNotesToStorage();
-      }
-    }
-  } catch (e) {
-    // No published data file — that's fine
-  }
-}
-
-// Load published notes on startup
-loadPublishedNotes();
