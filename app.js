@@ -840,6 +840,11 @@ function initSlashCommands(quill) {
     }
   });
 
+  // Prevent menu from stealing editor focus (this is the key fix for scroll-to-top)
+  slashMenu.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+  });
+
   // Handle item clicks
   slashMenu.addEventListener("click", (e) => {
     const item = e.target.closest(".slash-item");
@@ -908,16 +913,23 @@ function renderSlashItems(commands) {
 }
 
 function executeSlashCommand(quill, cmd) {
+  // Save position before changes
+  const targetIndex = slashStartIndex;
+
   // Delete the slash command text (/ + filter text)
   const range = quill.getSelection();
-  const deleteLen = range ? range.index - slashStartIndex : 1;
-  quill.deleteText(slashStartIndex, deleteLen);
-  quill.setSelection(slashStartIndex);
+  const deleteLen = range ? range.index - targetIndex : 1;
+  quill.deleteText(targetIndex, deleteLen);
 
   // Apply the command
-  cmd.action(quill, slashStartIndex);
+  cmd.action(quill, targetIndex);
   hideSlashMenu();
-  quill.focus();
+
+  // Restore cursor at the right position without scrolling
+  requestAnimationFrame(() => {
+    quill.setSelection(targetIndex, 0, "silent");
+    quill.focus();
+  });
 }
 
 function hideEditor() {
