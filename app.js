@@ -808,30 +808,35 @@ function initSlashCommands(quill) {
     }
   });
 
-  // Handle keyboard navigation in the menu
-  quill.root.addEventListener("keydown", (e) => {
+  // Handle keyboard navigation — use DOCUMENT with capture phase
+  // so we intercept BEFORE Quill's own keyboard module
+  document.addEventListener("keydown", (e) => {
     if (!slashMenuVisible) return;
 
     const visibleItems = getFilteredCommands();
 
     if (e.key === "ArrowDown") {
       e.preventDefault();
+      e.stopPropagation();
       slashSelectedIdx = Math.min(slashSelectedIdx + 1, visibleItems.length - 1);
       updateSlashSelection();
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
+      e.stopPropagation();
       slashSelectedIdx = Math.max(slashSelectedIdx - 1, 0);
       updateSlashSelection();
     } else if (e.key === "Enter") {
       e.preventDefault();
+      e.stopPropagation();
       if (visibleItems[slashSelectedIdx]) {
         executeSlashCommand(quill, visibleItems[slashSelectedIdx]);
       }
     } else if (e.key === "Escape") {
       e.preventDefault();
+      e.stopPropagation();
       hideSlashMenu();
     }
-  });
+  }, true); // ← capture phase = runs before Quill
 
   // Close menu on click outside
   document.addEventListener("click", (e) => {
@@ -840,7 +845,7 @@ function initSlashCommands(quill) {
     }
   });
 
-  // Prevent menu from stealing editor focus (this is the key fix for scroll-to-top)
+  // Prevent menu from stealing editor focus
   slashMenu.addEventListener("mousedown", (e) => {
     e.preventDefault();
   });
@@ -913,8 +918,11 @@ function renderSlashItems(commands) {
 }
 
 function executeSlashCommand(quill, cmd) {
-  // Save position before changes
   const targetIndex = slashStartIndex;
+
+  // Save scroll positions BEFORE any changes
+  const editorScroll = quill.root.parentNode.scrollTop;
+  const pageScroll = window.scrollY;
 
   // Delete the slash command text (/ + filter text)
   const range = quill.getSelection();
@@ -925,11 +933,10 @@ function executeSlashCommand(quill, cmd) {
   cmd.action(quill, targetIndex);
   hideSlashMenu();
 
-  // Restore cursor at the right position without scrolling
-  requestAnimationFrame(() => {
-    quill.setSelection(targetIndex, 0, "silent");
-    quill.focus();
-  });
+  // Restore scroll + cursor position
+  quill.root.parentNode.scrollTop = editorScroll;
+  window.scrollTo(0, pageScroll);
+  quill.setSelection(targetIndex, 0, "silent");
 }
 
 function hideEditor() {
