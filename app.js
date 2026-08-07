@@ -632,7 +632,7 @@ function showEditor(olympics) {
   if (!quillEditor) {
     quillEditor = new Quill("#quill-editor", {
       theme: "snow",
-      placeholder: `Start writing facts about ${olympics.year} ${olympics.city} Olympics...`,
+      placeholder: `Start writing facts about ${olympics.year} ${olympics.city} Olympics...\n\nTip: Type # for H1, ## for H2, > for quote, - for bullet, or / for commands`,
       modules: {
         toolbar: [
           [{ header: [1, 2, 3, false] }],
@@ -643,8 +643,86 @@ function showEditor(olympics) {
           ["link", "image"],
           ["clean"],
         ],
+        keyboard: {
+          bindings: {
+            // ── Markdown Shortcuts ──
+            // Type "# " at line start → Heading 1
+            "md-h1": {
+              key: " ",
+              prefix: /^#$/,
+              handler(range) {
+                this.quill.formatLine(range.index, 1, "header", 1);
+                this.quill.deleteText(range.index - 1, 1);
+                return false;
+              },
+            },
+            // Type "## " → Heading 2
+            "md-h2": {
+              key: " ",
+              prefix: /^##$/,
+              handler(range) {
+                this.quill.formatLine(range.index, 1, "header", 2);
+                this.quill.deleteText(range.index - 2, 2);
+                return false;
+              },
+            },
+            // Type "### " → Heading 3
+            "md-h3": {
+              key: " ",
+              prefix: /^###$/,
+              handler(range) {
+                this.quill.formatLine(range.index, 1, "header", 3);
+                this.quill.deleteText(range.index - 3, 3);
+                return false;
+              },
+            },
+            // Type "> " → Blockquote
+            "md-blockquote": {
+              key: " ",
+              prefix: /^>$/,
+              handler(range) {
+                this.quill.formatLine(range.index, 1, "blockquote", true);
+                this.quill.deleteText(range.index - 1, 1);
+                return false;
+              },
+            },
+            // Type "- " → Bullet list
+            "md-bullet": {
+              key: " ",
+              prefix: /^-$/,
+              handler(range) {
+                this.quill.formatLine(range.index, 1, "list", "bullet");
+                this.quill.deleteText(range.index - 1, 1);
+                return false;
+              },
+            },
+            // Type "1. " → Ordered list
+            "md-ordered": {
+              key: " ",
+              prefix: /^1\.$/,
+              handler(range) {
+                this.quill.formatLine(range.index, 1, "list", "ordered");
+                this.quill.deleteText(range.index - 2, 2);
+                return false;
+              },
+            },
+            // Type "```" → Code block
+            "md-code": {
+              key: "`",
+              prefix: /^``$/,
+              handler(range) {
+                this.quill.formatLine(range.index, 1, "code-block", true);
+                this.quill.deleteText(range.index - 2, 2);
+                return false;
+              },
+            },
+          },
+        },
       },
     });
+
+    // ── Slash Command Menu ──
+    initSlashCommands(quillEditor);
 
     // Auto-save on edit (debounced) — saves to Firestore + localStorage
     quillEditor.on("text-change", () => {
@@ -666,6 +744,180 @@ function showEditor(olympics) {
     quillEditor.root.innerHTML = "";
   }
   updateSaveStatus("saved");
+}
+
+// ─── Slash Command Menu ───
+const SLASH_COMMANDS = [
+  { label: "Heading 1", icon: "H1", desc: "Big section heading", action: (q, i) => { q.formatLine(i, 1, "header", 1); } },
+  { label: "Heading 2", icon: "H2", desc: "Medium heading", action: (q, i) => { q.formatLine(i, 1, "header", 2); } },
+  { label: "Heading 3", icon: "H3", desc: "Small heading", action: (q, i) => { q.formatLine(i, 1, "header", 3); } },
+  { label: "Bullet List", icon: "•", desc: "Unordered list", action: (q, i) => { q.formatLine(i, 1, "list", "bullet"); } },
+  { label: "Numbered List", icon: "1.", desc: "Ordered list", action: (q, i) => { q.formatLine(i, 1, "list", "ordered"); } },
+  { label: "Quote", icon: "❝", desc: "Blockquote", action: (q, i) => { q.formatLine(i, 1, "blockquote", true); } },
+  { label: "Code Block", icon: "</>", desc: "Monospace code", action: (q, i) => { q.formatLine(i, 1, "code-block", true); } },
+  { label: "Divider", icon: "—", desc: "Horizontal rule", action: (q, i) => { q.insertText(i, "\n———————————————————\n"); } },
+  { label: "Clear Format", icon: "✕", desc: "Remove formatting", action: (q, i) => { q.removeFormat(i, 1); } },
+];
+
+let slashMenu = null;
+let slashMenuVisible = false;
+let slashFilterText = "";
+let slashStartIndex = -1;
+let slashSelectedIdx = 0;
+
+function initSlashCommands(quill) {
+  // Create the menu element
+  slashMenu = document.createElement("div");
+  slashMenu.className = "slash-menu";
+  slashMenu.innerHTML = renderSlashItems(SLASH_COMMANDS);
+  document.body.appendChild(slashMenu);
+
+  // Listen for text changes to detect "/"
+  quill.on("text-change", (delta, oldDelta, source) => {
+    if (source !== "user") return;
+
+    const range = quill.getSelection();
+    if (!range) return;
+
+    // Check if "/" was just typed
+    const inserted = delta.ops.find((op) => typeof op.insert === "string");
+    if (inserted && inserted.insert === "/") {
+      // Check it's at line start (only whitespace before it)
+      const [line, offset] = quill.getLine(range.index);
+      const lineText = line.domNode.textContent;
+      const textBeforeSlash = lineText.substring(0, offset);
+      if (textBeforeSlash.trim() === "" || textBeforeSlash === "/") {
+        slashStartIndex = range.index - 1;
+        slashFilterText = "";
+        slashSelectedIdx = 0;
+        showSlashMenu(quill, range.index);
+        return;
+      }
+    }
+
+    // If menu is visible, update filter
+    if (slashMenuVisible && slashStartIndex >= 0) {
+      const currentText = quill.getText(slashStartIndex, range.index - slashStartIndex);
+      if (currentText.startsWith("/")) {
+        slashFilterText = currentText.substring(1).toLowerCase();
+        slashSelectedIdx = 0;
+        updateSlashFilter();
+      } else {
+        hideSlashMenu();
+      }
+    }
+  });
+
+  // Handle keyboard navigation in the menu
+  quill.root.addEventListener("keydown", (e) => {
+    if (!slashMenuVisible) return;
+
+    const visibleItems = getFilteredCommands();
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      slashSelectedIdx = Math.min(slashSelectedIdx + 1, visibleItems.length - 1);
+      updateSlashSelection();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      slashSelectedIdx = Math.max(slashSelectedIdx - 1, 0);
+      updateSlashSelection();
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (visibleItems[slashSelectedIdx]) {
+        executeSlashCommand(quill, visibleItems[slashSelectedIdx]);
+      }
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      hideSlashMenu();
+    }
+  });
+
+  // Close menu on click outside
+  document.addEventListener("click", (e) => {
+    if (slashMenuVisible && !slashMenu.contains(e.target)) {
+      hideSlashMenu();
+    }
+  });
+
+  // Handle item clicks
+  slashMenu.addEventListener("click", (e) => {
+    const item = e.target.closest(".slash-item");
+    if (!item) return;
+    const idx = parseInt(item.dataset.index, 10);
+    const cmd = getFilteredCommands()[idx];
+    if (cmd) executeSlashCommand(quill, cmd);
+  });
+}
+
+function showSlashMenu(quill, index) {
+  const bounds = quill.getBounds(index);
+  const editorRect = quill.container.getBoundingClientRect();
+
+  slashMenu.style.top = `${editorRect.top + bounds.bottom + window.scrollY + 4}px`;
+  slashMenu.style.left = `${editorRect.left + bounds.left + window.scrollX}px`;
+
+  slashMenu.innerHTML = renderSlashItems(SLASH_COMMANDS);
+  slashMenu.classList.add("active");
+  slashMenuVisible = true;
+}
+
+function hideSlashMenu() {
+  slashMenu.classList.remove("active");
+  slashMenuVisible = false;
+  slashStartIndex = -1;
+  slashFilterText = "";
+}
+
+function getFilteredCommands() {
+  if (!slashFilterText) return SLASH_COMMANDS;
+  return SLASH_COMMANDS.filter(
+    (cmd) =>
+      cmd.label.toLowerCase().includes(slashFilterText) ||
+      cmd.desc.toLowerCase().includes(slashFilterText)
+  );
+}
+
+function updateSlashFilter() {
+  const filtered = getFilteredCommands();
+  slashMenu.innerHTML = renderSlashItems(filtered);
+  if (filtered.length === 0) {
+    slashMenu.innerHTML = '<div class="slash-empty">No commands found</div>';
+  }
+}
+
+function updateSlashSelection() {
+  slashMenu.querySelectorAll(".slash-item").forEach((el, i) => {
+    el.classList.toggle("selected", i === slashSelectedIdx);
+  });
+}
+
+function renderSlashItems(commands) {
+  return commands
+    .map(
+      (cmd, i) => `
+      <div class="slash-item ${i === slashSelectedIdx ? "selected" : ""}" data-index="${i}">
+        <span class="slash-icon">${cmd.icon}</span>
+        <div class="slash-text">
+          <span class="slash-label">${cmd.label}</span>
+          <span class="slash-desc">${cmd.desc}</span>
+        </div>
+      </div>`
+    )
+    .join("");
+}
+
+function executeSlashCommand(quill, cmd) {
+  // Delete the slash command text (/ + filter text)
+  const range = quill.getSelection();
+  const deleteLen = range ? range.index - slashStartIndex : 1;
+  quill.deleteText(slashStartIndex, deleteLen);
+  quill.setSelection(slashStartIndex);
+
+  // Apply the command
+  cmd.action(quill, slashStartIndex);
+  hideSlashMenu();
+  quill.focus();
 }
 
 function hideEditor() {
